@@ -1,28 +1,69 @@
 import crypto from "crypto";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const SYMBOL = "BTCUSDT";
 const QUANTITY = "0.001";
 
-const BINANCE_API_URL = process.env.BINANCE_API_URL;
-const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
-const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
+const BINANCE_API_URL = process.env.BINANCE_API_URL || "";
+const BINANCE_API_KEY = process.env.BINANCE_API_KEY || "";
+const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY || "";
 
 let isOpened = false;
 
-function getClosePriceInCandle(candle) {
-    // Campos retornados no candle
-    //[1]open
-    //[2]high
-    //[3]low
-    //[4]close
-    return parseFloat(candle[4]);
+type Candle = [
+  number,
+  string,
+  string,
+  string,
+  string,
+  string,
+  number,
+  string,
+  number,
+  string,
+  string,
+  string
+];
+
+type OrderSide = "buy" | "sell";
+
+type OrderType = "MARKET";
+
+type Order = {
+    signature: string,
+    symbol: string,
+    quantity: string,
+    side: OrderSide,
+    type: OrderType,
+    timestamp: string
 }
 
-function calcSimpleMovingAverage(data) {
-    const closes = data.map(candle => getClosePriceInCandle(candle))
+const CANDLE_DATA_INDEX = {
+    OPEN_TIME: 0,
+    OPEN: 1,
+    HIGH: 2,
+    LOW: 3,
+    CLOSE: 4,
+    VOLUME: 5,
+    CLOSE_TIME: 6,
+    QUOTE_ASSET_VOLUME: 7,
+    NUMBER_OF_TRADES: 8,
+    TAKER_BUY_BASE_ASSET_VOLUME: 9,
+    TAKER_BUY_QUOTE_ASSET_VOLUME: 10,
+    IGNORE: 11
+} as const;
+
+function getClosePriceInCandle(candle: Candle) {
+    return parseFloat(candle[CANDLE_DATA_INDEX.CLOSE]);
+}
+
+function calcSimpleMovingAverage(candles: Candle[]) {
+    const closes = candles.map(candle => getClosePriceInCandle(candle))
     const sum = closes.reduce((a,b) => a + b)
 
-    return sum / data.length;
+    return sum / candles.length;
 }
 
 async function start() {
@@ -61,10 +102,8 @@ async function start() {
     }
 }
 
-async function newOrder(symbol, quantity, side) {
-    const order = { symbol, quantity, side };
-    order.type = "MARKET";
-    order.timestamp = Date.now();
+async function newOrder(symbol: string, quantity: string, side: OrderSide) {
+    const order: Partial<Order> = { symbol, quantity, side, type: "MARKET", timestamp: Date.now().toString() };
 
     const signature = crypto
         .createHmac("sha256", BINANCE_SECRET_KEY)
