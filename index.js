@@ -1,10 +1,11 @@
-import axios from "axios";
+import crypto from "crypto";
 
 const SYMBOL = "BTCUSDT";
-const BUY_PRICE = 120672;
-const SELL_PRICE = 122121;
+const QUANTITY = "0.001";
 
-const API_URL = "https://testnet.binance.vision"; //https://api.binance.com
+const BINANCE_API_URL = process.env.BINANCE_API_URL;
+const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
+const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
 
 let isOpened = false;
 
@@ -25,17 +26,19 @@ function calcSimpleMovingAverage(data) {
 }
 
 async function start() {
-    const {data} = await axios.get(`${API_URL}/api/v3/klines?limit=21&interval=15m&symbol=${SYMBOL}`)
-    const candle = data[data.length - 1];
+    const responseData = await fetch(`${BINANCE_API_URL}/api/v3/klines?limit=21&interval=15m&symbol=${SYMBOL}`)
+    const responseBody = await responseData.json();
+
+    const candle = responseBody[responseBody.length - 1];
 
     const price = getClosePriceInCandle(candle);
 
     console.clear()
     console.log(price);
 
-    const simpleMovingAverage = calcSimpleMovingAverage(data);
-    // const simpleMovingAverageIn21Periods = calcSimpleMovingAverage(data);
-    // const simpleMovingAverageIn13Periods = calcSimpleMovingAverage(data.slice(8));
+    const simpleMovingAverage = calcSimpleMovingAverage(responseBody);
+    // const simpleMovingAverageIn21Periods = calcSimpleMovingAverage(responseBody);
+    // const simpleMovingAverageIn13Periods = calcSimpleMovingAverage(responseBody.slice(8));
     console.log("SMA", simpleMovingAverage);
     // console.log("SMA (13):", simpleMovingAverageIn13Periods);
     // console.log("SMA (21):", simpleMovingAverageIn21Periods);
@@ -43,18 +46,47 @@ async function start() {
 
     // if (simpleMovingAverageIn13Periods > simpleMovingAverageIn21Periods && !isOpened) {
     if (price <= (simpleMovingAverage * 0.9) && !isOpened) {
-        console.log("buy")
-
         isOpened = true;
+
+        newOrder(SYMBOL, QUANTITY, "buy");
     }
     // else if (simpleMovingAverageIn13Periods < simpleMovingAverageIn21Periods && isOpened) {
     else if (price >= (simpleMovingAverage * 1.1) && isOpened) {
-        console.log("sell")
-
         isOpened = false;
+
+        newOrder(SYMBOL, QUANTITY, "sell");
     }
-    else
+    else {
         console.log("wait")
+    }
+}
+
+async function newOrder(symbol, quantity, side) {
+    const order = { symbol, quantity, side };
+    order.type = "MARKET";
+    order.timestamp = Date.now();
+
+    const signature = crypto
+        .createHmac("sha256", BINANCE_SECRET_KEY)
+        .update(new URLSearchParams(order).toString())
+        .digest("hex");
+
+    order.signature = signature;
+
+    try {
+        const response = await fetch(`${BINANCE_API_URL}/api/v3/order?${new URLSearchParams(order).toString()}`, {
+            method: "POST",
+            headers: {
+                "X-MBX-APIKEY": BINANCE_API_KEY
+            }
+        })
+        const responseData = await response.json();
+
+        console.log({responseData})
+        console.log({responseDataFills: responseData.fills})
+    } catch (error) {
+        console.log(error);
+    }
 }
 
 setInterval(() => {
